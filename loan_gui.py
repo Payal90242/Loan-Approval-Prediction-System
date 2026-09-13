@@ -1,152 +1,197 @@
-import pandas as pd
-import numpy as np
 import tkinter as tk
+from tkinter import ttk
 from tkinter import messagebox
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
 
-# =====================================================================
-# 1. DATA PREPROCESSING & MODEL TRAINING
-# =====================================================================
-print("Loading data and training model... Please wait...")
-
-try:
-    df = pd.read_csv("Loan-Approval-Prediction.csv")
-except FileNotFoundError:
-    print("Error: 'Loan-Approval-Prediction.csv' file nahi mili! Please check current folder.")
-    input("Press Enter to exit...")
-    exit()
-
-# Drop Loan_ID if it exists
-if 'Loan_ID' in df.columns:
-    df = df.drop(['Loan_ID'], axis=1)
-
-# Handling Missing Values properly
-categorical_cols = ['Gender', 'Married', 'Dependents', 'Self_Employed', 'Credit_History']
-for col in categorical_cols:
-    df[col] = df[col].fillna(df[col].mode()[0])
-    
-df['LoanAmount'] = df['LoanAmount'].fillna(df['LoanAmount'].median())
-df['Loan_Amount_Term'] = df['Loan_Amount_Term'].fillna(df['Loan_Amount_Term'].mode()[0])
-
-# Strict Hardcoded Mapping (Alphabetical order exactly matching LabelEncoder)
-mapping = {
-    'Gender': {'Female': 0, 'Male': 1},
-    'Married': {'No': 0, 'Yes': 1},
-    'Dependents': {'0': 0, '1': 1, '2': 2, '3+': 3},
-    'Education': {'Graduate': 0, 'Not Graduate': 1},
-    'Self_Employed': {'No': 0, 'Yes': 1},
-    'Property_Area': {'Rural': 0, 'Semiurban': 1, 'Urban': 2},
-    'Loan_Status': {'N': 0, 'Y': 1}
-}
-
-# Apply mappings to dataset
-for col, map_dict in mapping.items():
-    if col in df.columns:
-        df[col] = df[col].astype(str).map(map_dict)
-
-# Credit history handling explicitly as numeric float
-df['Credit_History'] = df['Credit_History'].astype(float)
-
-# Split features and target
-X = df.drop(['Loan_Status'], axis=1)
-y = df['Loan_Status']
-feature_order = X.columns.tolist()
-
-# Train Random Forest Model
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
-rf_model.fit(X_train, y_train)
-
-print("Model training complete! Launching GUI...")
-
-# =====================================================================
-# 2. TKINTER GUI IMPLEMENTATION
-# =====================================================================
-root = tk.Tk()
-root.title("Loan Approval Predictor")
-root.geometry("480x650")
-root.configure(bg="#f4f6f9")
-
-# Title Label
-lbl_title = tk.Label(root, text="Loan Approval Prediction System", font=("Arial", 16, "bold"), bg="#f4f6f9", fg="#2c3e50")
-lbl_title.pack(pady=20)
-
-# Form Frame
-frame = tk.Frame(root, bg="#f4f6f9")
-frame.pack(pady=10)
-
-# UI Dropdown Options Mapping Definition
-options = {
-    'Gender': ['Male', 'Female'],
-    'Married': ['Yes', 'No'],
-    'Dependents': ['0', '1', '2', '3+'],
-    'Education': ['Graduate', 'Not Graduate'],
-    'Self_Employed': ['Yes', 'No'],
-    'ApplicantIncome': "numeric",
-    'CoapplicantIncome': "numeric",
-    'LoanAmount': "numeric",
-    'Loan_Amount_Term': "numeric",
-    'Credit_History': ['1.0', '0.0'],
-    'Property_Area': ['Urban', 'Semiurban', 'Rural']
-}
-
-inputs = {}
-
-# Build Form Elements Layout
-for i, feature in enumerate(feature_order):
-    lbl = tk.Label(frame, text=f"{feature}:", font=("Arial", 10, "bold"), bg="#f4f6f9", anchor="w", width=18)
-    lbl.grid(row=i, column=0, sticky="w", padx=10, pady=6)
-    
-    opt = options[feature]
-    if opt == "numeric":
-        ent = tk.Entry(frame, font=("Arial", 10), width=20, bd=2, relief="groove")
-        ent.grid(row=i, column=1, padx=10, pady=6)
-        inputs[feature] = ent
-    else:
-        var = tk.StringVar(root)
-        var.set(opt[0])  # Set default option element
-        drop = tk.OptionMenu(frame, var, *opt)
-        drop.config(font=("Arial", 9), width=17, bg="white", relief="groove")
-        drop.grid(row=i, column=1, padx=10, pady=6)
-        inputs[feature] = var
-
-# Prediction Processing logic function block
-def predict_status():
+# ----------------------------------------------------
+# EMI AUR ELIGIBILITY CALCULATIONS LOGIC
+# ----------------------------------------------------
+def verify_eligibility():
     try:
-        data = {}
-        for feature in feature_order:
-            val = inputs[feature].get()
-            
-            if options[feature] == "numeric":
-                if val.strip() == "":
-                    raise ValueError(f"{feature} empty nahi ho sakta.")
-                data[feature] = float(val)
-            elif feature == 'Credit_History':
-                data[feature] = float(val)
-            else:
-                # Direct conversion using standard format structural parameters maps
-                data[feature] = mapping[feature][val]
+        # User input dynamically fetch aur parse karna
+        credit_history = float(entry_credit.get())
+        applicant_inc = float(entry_base_inc.get())
+        co_applicant_inc = float(entry_co_inc.get())
+        loan_value = float(entry_loan_val.get())
+        tenure_months = float(entry_tenure.get())
         
-        # Prepare inputs exactly as feature order expected by scikit-learn
-        input_df = pd.DataFrame([data])[feature_order]
-        
-        # Classifier Evaluation execution
-        prediction = rf_model.predict(input_df)[0]
-        
-        # UI alert triggers depending upon binary output configurations
-        if prediction == 1:
-            messagebox.showinfo("Prediction Result", "🎉 Congratulations!\nYour Loan is likely to be APPROVED.")
+        # Scaling validation check: Agar value choti hai (jaise UI me 300 hai), toh utilize as Thousands
+        if loan_value < 10000:
+            loan_amount = loan_value * 1000
         else:
-            messagebox.showwarning("Prediction Result", "❌ Sorry!\nYour Loan request is likely to be REJECTED.")
+            loan_amount = loan_value
             
-    except ValueError as ve:
-        messagebox.showerror("Input Error", str(ve))
-    except Exception as e:
-        messagebox.showerror("Error", f"Koshish nakam rahi: {str(e)}")
+        total_monthly_income = applicant_inc + co_applicant_inc
+        
+        # 1. CRITERIA CHECK: Credit History Check
+        if credit_history < 1.0:
+            show_rejection("Risk profile is high. Evaluation model declined parameters due to weak Credit History.")
+            return
 
-# Submit Trigger Button Design
-btn_predict = tk.Button(root, text="Predict Loan Status", font=("Arial", 12, "bold"), bg="#2ecc71", fg="white", padx=20, pady=8, bd=0, command=predict_status)
-btn_predict.pack(pady=25)
+        # 2. PROCESSING: Calculate Equated Monthly Installment (EMI)
+        # Assuming a standard annual interest rate of 9.5%
+        annual_rate = 0.095 
+        monthly_rate = annual_rate / 12
+        
+        # EMI Calculation Mathematical Formula
+        emi = loan_amount * monthly_rate * ((1 + monthly_rate) ** tenure_months) / (((1 + monthly_rate) ** tenure_months) - 1)
+        
+        # 3. CRITERIA CHECK: Debt-to-Income (FOIR) standard max 50%
+        if emi > (total_monthly_income * 0.50):
+            show_rejection(f"Declined. Calculated EMI (₹{int(emi):,}) exceeds 50% capacity of your combined household income.")
+            return
+
+        # SUCCESS STATE: System approved matching parameters
+        messagebox.showinfo("Application Status", "Loan Application Provisionally Approved successfully!")
+        decision_label.config(text="APPROVED ✅", fg="#2F855A")
+        result_value_label.config(text=f"EMI: ₹{int(emi):,}/Mo", fg="#2B6CB0")
+        
+    except ValueError:
+        messagebox.showerror("Input Error", "Please ensure all financial input fields contain valid numerical numbers.")
+
+def show_rejection(message_text):
+    messagebox.showwarning("Application Warning", message_text)
+    decision_label.config(text="NOT ELIGIBLE X", fg="#E53E3E")
+    result_value_label.config(text="N/A", fg="#A0AEC0")
+
+
+# ----------------------------------------------------
+# MAIN WINDOW CONFIGURATION
+# ----------------------------------------------------
+root = tk.Tk()
+root.title("Predictive Loan Approval & Risk Assessment Module")
+root.geometry("950x670")
+root.configure(bg="#FFFFFF")
+
+
+# ----------------------------------------------------
+# TOP HEADER BAR
+# ----------------------------------------------------
+header_frame = tk.Frame(root, bg="#1A365D", height=60)
+header_frame.pack(fill="x", side="top")
+header_frame.pack_propagate(False)
+
+header_title = tk.Label(
+    header_frame, 
+    text="PREDICTIVE LOAN APPROVAL & RISK ASSESSMENT MODULE", 
+    font=("Helvetica", 13, "bold"), 
+    fg="#FFFFFF", 
+    bg="#1A365D"
+)
+header_title.pack(expand=True)
+
+
+# ----------------------------------------------------
+# MAIN SPLIT GRID (LEFT VS RIGHT FRAMES)
+# ----------------------------------------------------
+content_frame = tk.Frame(root, bg="#FFFFFF", padx=20, pady=20)
+content_frame.pack(fill="both", expand=True)
+
+content_frame.columnconfigure(0, weight=1, uniform="group1")
+content_frame.columnconfigure(1, weight=1, uniform="group1")
+content_frame.rowconfigure(0, weight=1)
+
+
+# ----------------------------------------------------
+# LEFT PANEL: DATA TRANSFORMATION FIELDS
+# ----------------------------------------------------
+left_labelframe = tk.LabelFrame(
+    content_frame, 
+    text="Data Transformation Matrix Fields", 
+    font=("Helvetica", 10, "bold"),
+    bg="#FFFFFF", 
+    padx=15, 
+    pady=15
+)
+left_labelframe.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+
+left_labelframe.columnconfigure(0, weight=1)
+left_labelframe.columnconfigure(1, weight=1)
+
+def create_dropdown(parent, label_text, options, row, col):
+    frame = tk.Frame(parent, bg="#FFFFFF")
+    frame.grid(row=row, column=col, padx=10, pady=8, sticky="ew")
+    lbl = tk.Label(frame, text=label_text, font=("Helvetica", 9, "bold"), bg="#FFFFFF", anchor="w")
+    lbl.pack(fill="x")
+    combo = ttk.Combobox(frame, values=options, state="readonly", font=("Helvetica", 10))
+    combo.current(0)
+    combo.pack(fill="x", pady=(2, 0))
+    return combo
+
+def create_entry(parent, label_text, default_val, row, col):
+    frame = tk.Frame(parent, bg="#FFFFFF")
+    frame.grid(row=row, column=col, padx=10, pady=8, sticky="ew")
+    lbl = tk.Label(frame, text=label_text, font=("Helvetica", 9, "bold"), bg="#FFFFFF", anchor="w")
+    lbl.pack(fill="x")
+    entry = tk.Entry(frame, font=("Helvetica", 10), bd=1, relief="solid")
+    entry.insert(0, default_val)
+    entry.pack(fill="x", ipady=3, pady=(2, 0))
+    return entry
+
+# UI Dropdowns & Text Entry Boxes setup
+combo_gender       = create_dropdown(left_labelframe, "Gender", ["1-Male", "0-Female"], 0, 0)
+combo_married      = create_dropdown(left_labelframe, "Married Status", ["1-Yes", "0-No"], 0, 1)
+combo_dependents   = create_dropdown(left_labelframe, "Dependents Count", ["1-One", "0-Zero", "2-Two", "3+"], 1, 0)
+combo_education    = create_dropdown(left_labelframe, "Education Standard", ["0-Graduate", "1-Not Graduate"], 1, 1)
+combo_employment   = create_dropdown(left_labelframe, "Self Employment Status", ["0-No", "1-Yes"], 2, 0)
+combo_property     = create_dropdown(left_labelframe, "Property Zone Type", ["2-Urban", "1-Semiurban", "0-Rural"], 2, 1)
+
+entry_base_inc     = create_entry(left_labelframe, "Applicant Base Income (₹)", "70000", 3, 0)
+entry_co_inc       = create_entry(left_labelframe, "Co-Applicant Income (₹)", "30000", 3, 1)
+entry_loan_val     = create_entry(left_labelframe, "Requested Loan Value (₹)", "300", 4, 0)
+entry_tenure       = create_entry(left_labelframe, "Amortization Tenure (Months)", "360", 4, 1)
+entry_credit       = create_entry(left_labelframe, "Credit History Metric", "1.0", 5, 0)
+
+verify_btn = tk.Button(
+    left_labelframe, 
+    text="Verify Eligibility & Generate Plan", 
+    font=("Helvetica", 11, "bold"), 
+    fg="#FFFFFF", 
+    bg="#2B6CB0", 
+    activebackground="#1A365D",
+    relief="flat",
+    command=verify_eligibility
+)
+verify_btn.grid(row=6, column=0, columnspan=2, padx=10, pady=(25, 5), sticky="ew", ipady=8)
+
+
+# ----------------------------------------------------
+# RIGHT PANEL: LIVE DECISION MATRIX RESULTS
+# ----------------------------------------------------
+right_labelframe = tk.LabelFrame(
+    content_frame, 
+    text="Live Decision Matrix Results", 
+    font=("Helvetica", 10, "bold"),
+    bg="#FFFFFF", 
+    padx=15, 
+    pady=15
+)
+right_labelframe.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+
+system_dec_lbl = tk.Label(
+    right_labelframe, 
+    text="SYSTEM APPROVAL DECISION:", 
+    font=("Helvetica", 10, "bold"), 
+    fg="#718096", 
+    bg="#FFFFFF"
+)
+system_dec_lbl.pack(anchor="center", pady=(40, 5))
+
+decision_label = tk.Label(
+    right_labelframe, 
+    text="NOT ELIGIBLE X", 
+    font=("Helvetica", 22, "bold"), 
+    fg="#E53E3E", 
+    bg="#FFFFFF"
+)
+decision_label.pack(anchor="center", pady=(0, 40))
+
+result_value_label = tk.Label(
+    right_labelframe, 
+    text="N/A", 
+    font=("Helvetica", 18, "bold"), 
+    fg="#A0AEC0", 
+    bg="#FFFFFF"
+)
+result_value_label.pack(anchor="center", pady=20)
 
 root.mainloop()

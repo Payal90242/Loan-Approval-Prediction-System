@@ -55,3 +55,23 @@ importances.sort_values(ascending=False).plot(kind='bar', figsize=(10,5))
 plt.title("Feature Importance - What affects Loan Approval most")
 plt.ylabel("Importance Score")
 plt.show()
+def calculate_emi(loan_amount, annual_interest_rate, tenure_months):
+    monthly_rate = annual_interest_rate / (12 * 100)
+    emi = (loan_amount * monthly_rate * (1 + monthly_rate)**tenure_months) / ((1 + monthly_rate)**tenure_months - 1)
+    emi = round(emi, 2)
+    
+    total_payment = round(emi * tenure_months, 2)
+    total_interest = round(total_payment - loan_amount, 2)
+    
+    print("---- Loan Details ----")
+    print(f"Loan Amount Sanctioned : ₹{loan_amount}")
+    print(f"Interest Rate          : {annual_interest_rate}% per annum")
+    print(f"Loan Tenure             : {tenure_months} months")
+    print(f"Monthly EMI             : ₹{emi}")
+    print(f"Total Payment (Principal + Interest) : ₹{total_payment}")
+    print(f"Total Interest Payable : ₹{total_interest}")
+    
+    return emi
+
+# Example test - tum yaha values badal sakti ho
+calculate_emi(loan_amount=200000, annual_interest_rate=9.5, tenure_months=120)
